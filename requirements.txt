@@ -12,3 +12,6 @@ pinocchio==0.4.1
 django-extensions==1.3.3
 django-debug-toolbar==1.0.1
 flake8==2.1.0
+
+# Database
+South==0.8.1

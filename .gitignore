@@ -6,6 +6,7 @@ dist
 build/
 django_oscar_paypal.egg-info/
 docs/_build
+installed_files.txt
 
 # Testing
 htmlcov
@@ -22,3 +23,6 @@ integration.py
 
 # Sandbox
 sandbox/public/media
+
+# Pycharm
+.idea
