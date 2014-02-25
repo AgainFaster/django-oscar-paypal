@@ -55,12 +55,15 @@ def _submit_payment_details(trxtype, order_number, card_number, cvv, expiry_date
         'COMMENT1': order_number,
         'COMMENT2': kwargs.get('comment2', ''),
         # Billing address (only required if using address verification service)
-        'FIRSTNAME': kwargs.get('first_name', ''),
-        'LASTNAME': kwargs.get('last_name', ''),
+        'FIRSTNAME': kwargs.get('first_name', kwargs.get('firstname', '')),
+        'LASTNAME': kwargs.get('last_name', kwargs.get('lastname', '')),
         'STREET': kwargs.get('street', ''),
         'CITY': kwargs.get('city', ''),
         'STATE': kwargs.get('state', ''),
         'ZIP': kwargs.get('zip', ''),
+        'BILLTOCOUNTRY': kwargs.get('countrycode', ''),
+        'EMAIL': kwargs.get('user_email', ''),
+        'PHONENUM': kwargs.get('billing_phone_number', ''),
     }
     return _transaction(params)
 
