@@ -65,10 +65,10 @@ def _submit_payment_details(trxtype, order_number, card_number, cvv, expiry_date
         'EMAIL': kwargs.get('user_email', ''),
         'PHONENUM': kwargs.get('billing_phone_number', ''),
     }
-    return _transaction(params)
+    return _transaction(params, _settings_params(**kwargs))
 
 
-def delayed_capture(order_number, pnref, amt=None):
+def delayed_capture(order_number, pnref, amt=None, **kwargs):
     """
     Perform a DELAYED CAPTURE transaction.
 
@@ -81,10 +81,10 @@ def delayed_capture(order_number, pnref, amt=None):
     }
     if amt:
         params['AMT'] = amt
-    return _transaction(params)
+    return _transaction(params, _settings_params(**kwargs))
 
 
-def reference_transaction(order_number, pnref, amt):
+def reference_transaction(order_number, pnref, amt, **kwargs):
     """
     Capture money using the card/address details of a previous transaction
 
@@ -99,10 +99,10 @@ def reference_transaction(order_number, pnref, amt):
         'ORIGID': pnref,
         'AMT': amt,
     }
-    return _transaction(params)
+    return _transaction(params, _settings_params(**kwargs))
 
 
-def credit(order_number, pnref, amt=None):
+def credit(order_number, pnref, amt=None, **kwargs):
     """
     Refund money back to a bankcard.
     """
@@ -113,10 +113,10 @@ def credit(order_number, pnref, amt=None):
     }
     if amt:
         params['AMT'] = amt
-    return _transaction(params)
+    return _transaction(params, _settings_params(**kwargs))
 
 
-def void(order_number, pnref):
+def void(order_number, pnref, **kwargs):
     """
     Prevent a transaction from being settled
     """
@@ -125,10 +125,35 @@ def void(order_number, pnref):
         'TRXTYPE': codes.VOID,
         'ORIGID': pnref
     }
-    return _transaction(params)
+    return _transaction(params, _settings_params(**kwargs))
 
 
-def _transaction(extra_params):
+def _get_setting(setting_dict, name, default=None):
+    """
+    If name is not it kwargs, try to get it from settings
+    """
+    return setting_dict.get(name.lower(), getattr(settings, name.upper(), default))
+
+
+def _settings_params(**kwargs):
+    settings_params = {
+        'PAYPAL_PAYFLOW_VENDOR_ID': _get_setting(kwargs, 'PAYPAL_PAYFLOW_VENDOR_ID'),
+        'PAYPAL_PAYFLOW_PASSWORD': _get_setting(kwargs, 'PAYPAL_PAYFLOW_PASSWORD'),
+        'PAYPAL_PAYFLOW_USER': _get_setting(kwargs, 'PAYPAL_PAYFLOW_USER',
+                                            _get_setting(kwargs, 'PAYPAL_PAYFLOW_VENDOR_ID')),
+        'PAYPAL_PAYFLOW_PARTNER': _get_setting(kwargs, 'PAYPAL_PAYFLOW_PARTNER', 'PayPal'),
+        'PAYPAL_PAYFLOW_CURRENCY': _get_setting(kwargs, 'PAYPAL_PAYFLOW_CURRENCY', 'USD'),
+        'PAYPAL_PAYFLOW_PRODUCTION_MODE': _get_setting(kwargs, 'PAYPAL_PAYFLOW_PRODUCTION_MODE', False),
+    }
+
+    for setting in ('PAYPAL_PAYFLOW_VENDOR_ID', 'PAYPAL_PAYFLOW_PASSWORD'):
+        if not settings_params.get(setting):
+            raise exceptions.ImproperlyConfigured("You must define a %s setting" % setting)
+
+    return settings_params
+
+
+def _transaction(extra_params, settings_params):
     """
     Perform a transaction with PayPal.
 
@@ -153,33 +178,21 @@ def _transaction(extra_params):
                 "A %s parameter must be supplied for a %s transaction" % (
                     key, trxtype))
 
-    # At a minimum, we require a vendor ID and a password.
-    for setting in ('PAYPAL_PAYFLOW_VENDOR_ID',
-                    'PAYPAL_PAYFLOW_PASSWORD'):
-        if not hasattr(settings, setting):
-            raise exceptions.ImproperlyConfigured(
-                "You must define a %s setting" % setting
-            )
-
     # Set credentials
     params = {
-        'VENDOR': settings.PAYPAL_PAYFLOW_VENDOR_ID,
-        'PWD': settings.PAYPAL_PAYFLOW_PASSWORD,
-        'USER': getattr(settings, 'PAYPAL_PAYFLOW_USER',
-                        settings.PAYPAL_PAYFLOW_VENDOR_ID),
-        'PARTNER': getattr(settings, 'PAYPAL_PAYFLOW_PARTNER',
-                           'PayPal')
+        'VENDOR': settings_params.get('PAYPAL_PAYFLOW_VENDOR_ID'),
+        'PWD': settings_params.get('PAYPAL_PAYFLOW_PASSWORD'),
+        'USER': settings_params.get('PAYPAL_PAYFLOW_USER'),
+        'PARTNER': settings_params.get('PAYPAL_PAYFLOW_PARTNER'),
+        'CURRENCY': settings_params.get('PAYPAL_PAYFLOW_CURRENCY'),
     }
     params.update(extra_params)
 
     # Ensure that any amounts have a currency and are formatted correctly
     if 'AMT' in params:
-        if 'CURRENCY' not in params:
-            params['CURRENCY'] = getattr(settings,
-                                         'PAYPAL_PAYFLOW_CURRENCY', 'USD')
         params['AMT'] = "%.2f" % params['AMT']
 
-    if getattr(settings, 'PAYPAL_PAYFLOW_PRODUCTION_MODE', False):
+    if settings_params.get('PAYPAL_PAYFLOW_PRODUCTION_MODE'):
         url = 'https://payflowpro.paypal.com'
     else:
         url = 'https://pilot-payflowpro.paypal.com'
@@ -190,8 +203,9 @@ def _transaction(extra_params):
 
     # Beware - this log information will contain the Payflow credentials
     # only use it in development, not production.
-    logger.debug("Raw request: %s", pairs['_raw_request'])
-    logger.debug("Raw response: %s", pairs['_raw_response'])
+    if not settings_params.get('PAYPAL_PAYFLOW_PRODUCTION_MODE'):
+        logger.debug("Raw request: %s", pairs['_raw_request'])
+        logger.debug("Raw response: %s", pairs['_raw_response'])
 
     return models.PayflowTransaction.objects.create(
         comment1=params['COMMENT1'],
