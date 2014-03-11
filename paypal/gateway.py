@@ -3,6 +3,8 @@ import time
 import urlparse
 
 from paypal import exceptions
+from raven.contrib.django.models import client
+import logging
 
 
 def post(url, params):
@@ -13,6 +15,7 @@ def post(url, params):
     :url: URL to post to
     :params: Dict of parameters to include in post payload
     """
+
     for k in params.keys():
         if type(params[k]) == unicode:
             params[k] = params[k].encode('utf-8')
@@ -21,9 +24,26 @@ def post(url, params):
     payload = '&'.join(['%s=%s' % (key, val) for (key, val) in params.items()])
 
     start_time = time.time()
-    response = requests.post(url, payload, headers={'content-type': 'text/namevalue; charset=utf-8'})
+
+    num_tries = 3
+    logger = logging.getLogger(name="Cart")
+
+    while num_tries:
+        try:
+            response = requests.post(url, payload, headers={'content-type': 'text/namevalue; charset=utf-8'})
+            num_tries = 0
+        except Exception as e:
+            client.captureException()
+            logger.error('Exception Type: %s, Exception: %s' % (type(e), e,))
+            num_tries -= 1
+            if not num_tries:
+                raise exceptions.PayPalError("Unable to communicate with PayPal. Please try again.")
+            logger.info('Retrying PayPal request.')
+
     if response.status_code != requests.codes.ok:
-        raise exceptions.PayPalError("Unable to communicate with PayPal")
+        logger = logging.getLogger(name="Cart")
+        logger.error('Unable to communicate with PayPal. HTTP status: %s' % response.status_code)
+        raise exceptions.PayPalError("Unable to communicate with PayPal. Please try again.")
 
     # Convert response into a simple key-value format
     pairs = {}
