@@ -28,6 +28,8 @@ def post(url, params):
     num_tries = 3
     logger = logging.getLogger(name="Cart")
 
+    response = None
+
     while num_tries:
         try:
             response = requests.post(url, payload, headers={'content-type': 'text/namevalue; charset=utf-8'})
@@ -39,6 +41,9 @@ def post(url, params):
             if not num_tries:
                 raise exceptions.PayPalError("Unable to communicate with PayPal. Please try again.")
             logger.info('Retrying PayPal request.')
+
+    if not response:
+        raise exceptions.PayPalError("Unable to communicate with PayPal. Please try again.")
 
     if response.status_code != requests.codes.ok:
         logger = logging.getLogger(name="Cart")
